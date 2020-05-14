@@ -103,16 +103,23 @@ void print_commits_to_recreate(const std::vector<git_oid>& commits, const wrappe
 }
 
 git_oid get_target_commit(const std::string& revision_id, const wrappers::repository& repository) {
-    git_oid target{};
-    if (git_oid_fromstr(&target, revision_id.c_str()) == GIT_OK) {
-        return target;
-    }
-    auto ref = wrappers::make_reference();
-    auto error = git_reference_name_to_id(&target, repository.get(), revision_id.c_str());
+    //git_oid target{};
+    //if (git_oid_fromstr(&target, revision_id.c_str()) == GIT_OK) {
+    //    return target;
+    //}
+    auto target_object = wrappers::make_object();
+    auto error = git_revparse_single(&target_object.get(), repository.get(), revision_id.c_str());
     if (error != GIT_OK) {
-        throw std::runtime_error("Could not fetch target revision. Error code: " + std::to_string(error));
+        throw std::runtime_error("Could not parse target revision. Error code: " + std::to_string(error));
     }
-    return target;
+    auto target = git_object_id(target_object.get());
+    assert(target);
+    //auto ref = wrappers::make_reference();
+    //auto error = git_reference_name_to_id(&target, repository.get(), revision_id.c_str());
+    //if (error != GIT_OK) {
+    //    throw std::runtime_error("Could not fetch target revision. Error code: " + std::to_string(error));
+    //}
+    return *target;
 }
 
 void rebase_reword(const std::string& revision_id, const std::string& message, bool verbose) {
@@ -148,11 +155,11 @@ void rebase_reword(const std::string& revision_id, const std::string& message, b
 void show_usage() {
     std::cout << "Usage: " << std::endl;
     std::cout << "git-rebase-reword <revision> <message> [--verbose]" << std::endl;
-    std::cout << "\t<revision> - A commit hash or HEAD~N to change commit message" << std::endl;
+    std::cout << "\t<revision> - A revision to change commit message for" << std::endl;
     std::cout << "\t<message> - New commit message" << std::endl;
     std::cout << std::endl;
     std::cout << "Example: " << std::endl;
-    std::cout << "git-rebase-reword 6a8e6e325d6383d64469f377250042b881e05b4c \"Some new message\"" << std::endl;
+    std::cout << "git-rebase-reword HEAD~10 \"Some new message\"" << std::endl;
 }
 
 int main(int argc, char** argv) {

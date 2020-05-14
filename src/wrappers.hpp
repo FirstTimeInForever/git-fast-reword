@@ -154,6 +154,10 @@ namespace wrappers {
     inline auto make_revwalker() noexcept {
         return generic_wrapper<git_revwalk>(git_revwalk_free);
     }
+
+    inline auto make_object() noexcept {
+        return generic_wrapper<git_object>(git_object_free);
+    }
 }
 
 #endif
