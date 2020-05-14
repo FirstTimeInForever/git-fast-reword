@@ -18,6 +18,18 @@ git-fast-reword HEAD~1000 "You new message"
 ```
 to solve the problem.
 
+## Build
+
+You will need `C` and `C++` compilers able to compile `C99` and `C++17` code.
+
+```
+git clone https://github.com/FirstTimeInForever/git-fast-reword.git --recursive
+cd git-fast-reword
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release ../ && make all
+```
+
+
 ## How it works
 
 This tool will find target commit specified by `<revision>`, find all commits in range `[<revision>; HEAD]`, reword the target commit and recreate the chain of child commits from the range.

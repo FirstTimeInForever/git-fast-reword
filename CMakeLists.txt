@@ -7,10 +7,11 @@ if(MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /WX") # CMake already contains W3 in its flags
 else()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror")
+    # Suppress weird libgit2 documentation warning
+    add_compile_options("-Wno-documentation-deprecated-sync")
 endif()
 
-
-message(${CMAKE_CXX_FLAGS_RELEASE})
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(libs/libgit2)
 include_directories(libs/libgit2/include)
