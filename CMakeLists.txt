@@ -11,6 +11,7 @@ else()
     add_compile_options("-Wno-documentation-deprecated-sync")
 endif()
 
+set(BUILD_CLAR OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 add_subdirectory(libs/libgit2)

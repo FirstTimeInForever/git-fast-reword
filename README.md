@@ -21,14 +21,14 @@ to solve the problem.
 ## Build
 
 You will need `C` and `C++` compilers able to compile `C99` and `C++17` code.
+You will also need `cmake` and `libssl` (on ubuntu: `apt install cmake libssl-dev`).
 
 ```
 git clone https://github.com/FirstTimeInForever/git-fast-reword.git --recursive
 cd git-fast-reword
 mkdir build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release ../ && make all
+cmake -DCMAKE_BUILD_TYPE=Release ../ && make all -j8
 ```
-
 
 ## How it works
 
