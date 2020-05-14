@@ -108,37 +108,46 @@ git_oid get_target_commit(const std::string& revision_id, const wrappers::reposi
         return target;
     }
     auto ref = wrappers::make_reference();
-    if (git_reference_name_to_id(&target, repository.get(), revision_id.c_str()) != GIT_OK) {
-        throw std::runtime_error("Could not fetch target revision");
+    auto error = git_reference_name_to_id(&target, repository.get(), revision_id.c_str());
+    if (error != GIT_OK) {
+        throw std::runtime_error("Could not fetch target revision. Error code: " + std::to_string(error));
     }
     return target;
 }
 
-void stuff(const std::string& revision_id, const std::string& message) {
+void rebase_reword(const std::string& revision_id, const std::string& message, bool verbose) {
     wrappers::repository repository(".");
+    auto head = wrappers::make_reference();
+    auto error = git_repository_head(&head.get(), repository.get());
+    if (error != GIT_OK) {
+        throw std::runtime_error("Could not get repository head!. Error code: " + std::to_string(error));
+    }
+    if (!git_reference_is_branch(head.get())) {
+        throw std::runtime_error("HEAD must point to branch");
+    }
     auto target_oid = get_target_commit(revision_id, repository);
     auto commits = collect_oids(target_oid, repository);
-    print_commits_to_recreate(commits, repository);
+    if (verbose) {
+        print_commits_to_recreate(commits, repository);
+        std::cout << std::endl;
+    }
     if (git_oid_equal(&commits.back(), &target_oid)) {
         commits.pop_back();
     }
     std::reverse(commits.begin(), commits.end());
-    std::cout << std::endl;
     auto updated_target = reword_commit(target_oid, message, repository);
     auto parent = recreate_commits(updated_target, commits, repository);
-    auto head = wrappers::make_reference();
-    git_repository_head(&head.get(), repository.get());
-    if (!git_reference_is_branch(head.get())) {
-        throw std::runtime_error("HEAD must point to branch");
-    }
     auto updated_head = wrappers::make_reference();
-    check_error(git_reference_set_target(&updated_head.get(), head.get(), &parent, "reword HEAD update"));
-    std::cout << "HEAD -> " << make_oid_str(parent) << std::endl;
+    error = git_reference_set_target(&updated_head.get(), head.get(), &parent, "reword HEAD update");
+    if (error != GIT_OK) {
+        throw std::runtime_error("Could not set HEAD to " + make_oid_str(parent) + ". Error code: " + std::to_string(error));
+    }
+    std::cout << "HEAD is now pointing to: " << make_oid_str(parent) << std::endl;
 }
 
 void show_usage() {
     std::cout << "Usage: " << std::endl;
-    std::cout << "git-rebase-reword <revision> <message>" << std::endl;
+    std::cout << "git-rebase-reword <revision> <message> [--verbose]" << std::endl;
     std::cout << "\t<revision> - A commit hash or HEAD~N to change commit message" << std::endl;
     std::cout << "\t<message> - New commit message" << std::endl;
     std::cout << std::endl;
@@ -147,15 +156,24 @@ void show_usage() {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) {
+    if (argc < 3 || argc > 4) {
         show_usage();
         return 1;
+    }
+    bool verbose = false;
+    if (argc == 4) {
+        std::string arg(argv[3]);
+        if (arg != "--verbose") {
+            show_usage();
+            return 1;
+        }
+        verbose = true;
     }
     auto start_time = std::chrono::high_resolution_clock::now();
     git_libgit2_init();
     bool got_errors = false;
     try {
-        stuff(argv[1], argv[2]);
+        rebase_reword(argv[1], argv[2], verbose);
     }
     catch (const std::exception& exception) {
         std::cout << exception.what() << std::endl;
@@ -166,6 +184,8 @@ int main(int argc, char** argv) {
         return 1;
     }
     auto end_time = std::chrono::high_resolution_clock::now() - start_time;
-    std::cout << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time).count() << "ms"<< std::endl;
+    if (verbose) {
+        std::cout << "Time: " << std::chrono::duration_cast<std::chrono::milliseconds>(end_time).count() << "ms" << std::endl;
+    }
     return 0;
 }
