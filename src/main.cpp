@@ -41,28 +41,32 @@ std::vector<git_oid> collect_oids(const git_oid& target_oid, const wrappers::rep
     return result;
 }
 
-std::vector<git_commit*> get_commit_parents(const git_commit* commit) {
-    std::vector<git_commit*> parents;
+std::vector<wrappers::commit> get_commit_parents(const git_commit* commit) {
+    std::vector<wrappers::commit> parents;
     auto parents_count = git_commit_parentcount(commit);
     for (size_t it = 0; it < parents_count; ++it) {
-        git_commit* parent{};
-        auto error = git_commit_parent(&parent, commit, it);
+        wrappers::commit parent{};
+        auto error = git_commit_parent(&parent.get(), commit, it);
         if (error != GIT_OK) {
             throw git_exception("Could not parent of " + make_oid_str(*git_commit_id(commit)), error);
         }
-        parents.push_back(parent);
+        parents.push_back(std::move(parent));
     }
     return parents;
 }
 
 git_oid reword_commit(const git_oid& oid, const std::string& message, const wrappers::repository& repository) {
     wrappers::commit target_commit(oid, repository);
-    git_tree* tree{};
-    git_commit_tree(&tree, target_commit.get());
+    auto tree = wrappers::make_tree();
+    git_commit_tree(&tree.get(), target_commit.get());
     git_oid noid{};
-    auto parents = get_commit_parents(target_commit.get());
+    auto actual_parents = get_commit_parents(target_commit.get());
+    std::vector<git_commit*> parents(actual_parents.size());
+    for (size_t it = 0; it < actual_parents.size(); ++it) {
+        parents[it] = actual_parents[it].get();
+    }
     auto error = git_commit_create(&noid, repository.get(), nullptr, git_commit_author(target_commit.get()),
-        git_commit_committer(target_commit.get()), nullptr, (message + "\n").c_str(), tree,
+        git_commit_committer(target_commit.get()), nullptr, (message + "\n").c_str(), tree.get(),
         git_commit_parentcount(target_commit.get()), (const git_commit**)(parents.data()));
     check_error(error);
     std::cout << make_oid_str(oid) << " -> " << make_oid_str(noid) << std::endl;
@@ -71,14 +75,14 @@ git_oid reword_commit(const git_oid& oid, const std::string& message, const wrap
 
 git_oid recreate_commit_with_parent(const git_oid& oid, const git_oid& parent, const wrappers::repository& repository) {
     wrappers::commit original_commit(oid, repository);
-    git_tree* tree{};
-    git_commit_tree(&tree, original_commit.get());
+    auto tree = wrappers::make_tree();
+    git_commit_tree(&tree.get(), original_commit.get());
     git_oid noid{};
     wrappers::commit parent_commit(parent, repository);
     std::array<const git_commit*, 1> prr{parent_commit.get()};
     auto error = git_commit_create(&noid, repository.get(), nullptr, git_commit_author(original_commit.get()),
         git_commit_committer(original_commit.get()), git_commit_message_encoding(original_commit.get()),
-        git_commit_message(original_commit.get()), tree, 1, prr.data());
+        git_commit_message(original_commit.get()), tree.get(), 1, prr.data());
     check_error(error);
     return noid;
 }

@@ -27,118 +27,34 @@ inline void check_error(int error) {
 }
 
 namespace wrappers {
-    class repository {
-    public:
-
-        repository() noexcept = default;
-
-        explicit repository(const std::string& path) {
-            auto error = git_repository_open(&pointer, path.c_str());
-            if (error != GIT_OK) {
-                throw git_exception("Could not open repository!", error);
-            }
-        }
-
-        repository(const repository&) = delete;
-        repository& operator=(const repository&) = delete;
-
-        repository(repository&& other) noexcept {
-            swap(other);
-        }
-
-        repository& operator=(repository&& other) noexcept {
-            this->~repository();
-            swap(other);
-            return *this;
-        }
-
-        git_repository*& get() noexcept {
-            return pointer;
-        }
-
-        [[nodiscard]]
-        git_repository* const& get() const noexcept {
-            return pointer;
-        }
-
-        void swap(repository& other) noexcept {
-            std::swap(pointer, other.pointer);
-        }
-
-        ~repository() noexcept {
-            if (pointer) {
-                git_repository_free(pointer);
-                pointer = nullptr;
-            }
-        }
-
-    private:
-
-        git_repository* pointer{};
-    };
-
-    class commit {
-    public:
-
-        commit() noexcept = default;
-
-        commit(const git_oid& oid, const repository& repository) {
-            auto error = git_commit_lookup(&pointer, repository.get(), &oid);
-            if (error != GIT_OK){
-                throw git_exception("Failed to lookup commit object!", error);
-            }
-        }
-
-        explicit commit(git_commit* pointer) noexcept: pointer(pointer) {}
-
-        commit(const commit&) = delete;
-        commit& operator=(const commit&) = delete;
-
-        commit(commit&& other)  noexcept {
-            swap(other);
-        }
-
-        commit& operator=(commit&& other) noexcept {
-            this->~commit();
-            swap(other);
-            return *this;
-        }
-
-        git_commit*& get() noexcept {
-            return pointer;
-        }
-
-        [[nodiscard]]
-        git_commit* const& get() const noexcept {
-            return pointer;
-        }
-
-        void swap(commit& other) noexcept {
-            std::swap(pointer, other.pointer);
-        }
-
-        ~commit() noexcept {
-            if (pointer) {
-                git_commit_free(pointer);
-                pointer = nullptr;
-            }
-        }
-
-    private:
-
-        git_commit* pointer{};
-    };
-
     template<class resource_type>
-    struct generic_wrapper {
-        resource_type* resource{};
+    class generic_wrapper {
+    public:
+
         using deleter_type = void(resource_type*);
-        deleter_type* deleter;
 
         explicit generic_wrapper(deleter_type deleter) noexcept: deleter(deleter) {}
 
         generic_wrapper(resource_type* resource, deleter_type deleter) noexcept:
             resource(resource), deleter(deleter) {}
+
+        generic_wrapper(const generic_wrapper&) = delete;
+        generic_wrapper& operator=(const generic_wrapper&) = delete;
+
+        generic_wrapper(generic_wrapper&& other)  noexcept {
+            swap(other);
+        }
+
+        generic_wrapper& operator=(generic_wrapper&& other) noexcept {
+            this->~generic_wrapper();
+            swap(other);
+            return *this;
+        }
+
+        void swap(generic_wrapper& other) noexcept {
+            std::swap(resource, other.resource);
+            std::swap(deleter, other.deleter);
+        }
 
         resource_type*& get() noexcept {
             return resource;
@@ -149,10 +65,64 @@ namespace wrappers {
             return resource;
         }
 
-        ~generic_wrapper() noexcept {
+        virtual ~generic_wrapper() noexcept {
             if (resource) {
                 std::invoke(deleter, resource);
+                resource = nullptr;
             }
+        }
+
+    protected:
+
+        resource_type* resource{};
+        deleter_type* deleter;
+    };
+
+    class repository: public generic_wrapper<git_repository> {
+    public:
+
+        repository() noexcept: generic_wrapper<git_repository>(git_repository_free) {}
+
+        explicit repository(const std::string& path): generic_wrapper<git_repository>(git_repository_free) {
+            auto error = git_repository_open(&resource, path.c_str());
+            if (error != GIT_OK) {
+                throw git_exception("Could not open repository!", error);
+            }
+        }
+
+        repository(const repository&) = delete;
+        repository& operator=(const repository&) = delete;
+
+        repository(repository&& other) noexcept: generic_wrapper<git_repository>(std::move(other)) {}
+
+        repository& operator=(repository&& other) noexcept {
+            generic_wrapper<git_repository>::operator=(std::move(other));
+            return *this;
+        }
+    };
+
+    class commit: public generic_wrapper<git_commit> {
+    public:
+
+        commit() noexcept: generic_wrapper<git_commit>(git_commit_free) {}
+
+        commit(const git_oid& oid, const repository& repository): generic_wrapper<git_commit>(git_commit_free) {
+            auto error = git_commit_lookup(&resource, repository.get(), &oid);
+            if (error != GIT_OK){
+                throw git_exception("Failed to lookup commit object!", error);
+            }
+        }
+
+        explicit commit(git_commit* pointer) noexcept: generic_wrapper<git_commit>(pointer, git_commit_free) {}
+
+        commit(const commit&) = delete;
+        commit& operator=(const commit&) = delete;
+
+        commit(commit&& other) noexcept: generic_wrapper<git_commit>(std::move(other)) {}
+
+        commit& operator=(commit&& other) noexcept {
+            generic_wrapper<git_commit>::operator=(std::move(other));
+            return *this;
         }
     };
 
@@ -166,6 +136,10 @@ namespace wrappers {
 
     inline auto make_object() noexcept {
         return generic_wrapper<git_object>(git_object_free);
+    }
+
+    inline auto make_tree() noexcept {
+        return generic_wrapper<git_tree>(git_tree_free);
     }
 }
 
