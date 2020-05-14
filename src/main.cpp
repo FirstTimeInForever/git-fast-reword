@@ -46,8 +46,9 @@ std::vector<git_commit*> get_commit_parents(const git_commit* commit) {
     auto parents_count = git_commit_parentcount(commit);
     for (size_t it = 0; it < parents_count; ++it) {
         git_commit* parent{};
-        if (git_commit_parent(&parent, commit, it) != GIT_OK) {
-            throw std::runtime_error("Could not parent of " + make_oid_str(*git_commit_id(commit)));
+        auto error = git_commit_parent(&parent, commit, it);
+        if (error != GIT_OK) {
+            throw git_exception("Could not parent of " + make_oid_str(*git_commit_id(commit)), error);
         }
         parents.push_back(parent);
     }
@@ -103,22 +104,13 @@ void print_commits_to_recreate(const std::vector<git_oid>& commits, const wrappe
 }
 
 git_oid get_target_commit(const std::string& revision_id, const wrappers::repository& repository) {
-    //git_oid target{};
-    //if (git_oid_fromstr(&target, revision_id.c_str()) == GIT_OK) {
-    //    return target;
-    //}
     auto target_object = wrappers::make_object();
     auto error = git_revparse_single(&target_object.get(), repository.get(), revision_id.c_str());
     if (error != GIT_OK) {
-        throw std::runtime_error("Could not parse target revision. Error code: " + std::to_string(error));
+        throw git_exception("Could not parse target revision", error);
     }
     auto target = git_object_id(target_object.get());
     assert(target);
-    //auto ref = wrappers::make_reference();
-    //auto error = git_reference_name_to_id(&target, repository.get(), revision_id.c_str());
-    //if (error != GIT_OK) {
-    //    throw std::runtime_error("Could not fetch target revision. Error code: " + std::to_string(error));
-    //}
     return *target;
 }
 
@@ -127,10 +119,10 @@ void rebase_reword(const std::string& revision_id, const std::string& message, b
     auto head = wrappers::make_reference();
     auto error = git_repository_head(&head.get(), repository.get());
     if (error != GIT_OK) {
-        throw std::runtime_error("Could not get repository head!. Error code: " + std::to_string(error));
+        throw git_exception("Could not get repository head!", error);
     }
     if (!git_reference_is_branch(head.get())) {
-        throw std::runtime_error("HEAD must point to branch");
+        throw git_exception("HEAD must point to branch");
     }
     auto target_oid = get_target_commit(revision_id, repository);
     auto commits = collect_oids(target_oid, repository);
@@ -147,7 +139,7 @@ void rebase_reword(const std::string& revision_id, const std::string& message, b
     auto updated_head = wrappers::make_reference();
     error = git_reference_set_target(&updated_head.get(), head.get(), &parent, "reword HEAD update");
     if (error != GIT_OK) {
-        throw std::runtime_error("Could not set HEAD to " + make_oid_str(parent) + ". Error code: " + std::to_string(error));
+        throw git_exception("Could not set HEAD to " + make_oid_str(parent), error);
     }
     std::cout << "HEAD is now pointing to: " << make_oid_str(parent) << std::endl;
 }
@@ -179,8 +171,14 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::high_resolution_clock::now();
     git_libgit2_init();
     bool got_errors = false;
+    int error_code = GIT_OK;
     try {
         rebase_reword(argv[1], argv[2], verbose);
+    }
+    catch (const git_exception& exception) {
+        std::cout << exception.what() << std::endl;
+        got_errors = true;
+        error_code = exception.error_code;
     }
     catch (const std::exception& exception) {
         std::cout << exception.what() << std::endl;
@@ -188,6 +186,9 @@ int main(int argc, char** argv) {
     }
     git_libgit2_shutdown();
     if (got_errors) {
+        if (error_code != GIT_OK) {
+            return error_code;
+        }
         return 1;
     }
     auto end_time = std::chrono::high_resolution_clock::now() - start_time;

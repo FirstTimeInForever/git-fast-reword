@@ -11,9 +11,18 @@
 #include <algorithm>
 
 
+struct git_exception: public std::runtime_error {
+    int error_code = GIT_OK;
+
+    using std::runtime_error::runtime_error;
+
+    git_exception(const std::string& message, int error_code):
+        std::runtime_error(message), error_code(error_code) {}
+};
+
 inline void check_error(int error) {
     if (error != GIT_OK) {
-        throw std::runtime_error("libgit returned error code: " + std::to_string(error));
+        throw git_exception("libgit call returned error", error);
     }
 }
 
@@ -26,7 +35,7 @@ namespace wrappers {
         explicit repository(const std::string& path) {
             auto error = git_repository_open(&pointer, path.c_str());
             if (error != GIT_OK) {
-                throw std::runtime_error("Could not open repository! Error code: " + std::to_string(error));
+                throw git_exception("Could not open repository!", error);
             }
         }
 
@@ -76,7 +85,7 @@ namespace wrappers {
         commit(const git_oid& oid, const repository& repository) {
             auto error = git_commit_lookup(&pointer, repository.get(), &oid);
             if (error != GIT_OK){
-                throw std::runtime_error("Failed to lookup commit object! Error was: " + std::to_string(error));
+                throw git_exception("Failed to lookup commit object!", error);
             }
         }
 
